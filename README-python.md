@@ -12,10 +12,10 @@ Usage (example):
 
 2. Set environment variables (or copy .env.example -> .env and export):
    export ADMIN_USER=admin
-   export ADMIN_PASS=admin
+   export ADMIN_PASS=yourAdminPassword
    export SESSION_SECRET='a-long-random-secret'
-   export PORT=3000
-   export PYTHON_CMD=python3   # optional
+   export PORT=25318
+   export PYTHON_CMD=python3   # optional; defaults to sys.executable
 
 3. Ensure main_Version5.py, run_nuke_web.py, run_clone_web.py exist in the repo root.
 

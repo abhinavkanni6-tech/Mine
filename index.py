@@ -40,7 +40,7 @@ except Exception:
 ADMIN_USER = os.getenv('ADMIN_USER', 'admin')
 ADMIN_PASS = os.getenv('ADMIN_PASS', 'admin')
 SESSION_SECRET = os.getenv('SESSION_SECRET', 'change-this-secret')
-PORT = int(os.getenv('PORT', '3000'))
+PORT = int(os.getenv('PORT', '25318'))
 PYTHON_CMD = os.getenv('PYTHON_CMD', sys.executable)
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))

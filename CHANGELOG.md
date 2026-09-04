@@ -1,1 +1,1 @@
-Updated to Python-only server (index.py) using Flask, with SSE job streaming, env-based admin creation, and README for Python usage.
+Updated docs and defaults to use port 25318 as the default runtime port.
