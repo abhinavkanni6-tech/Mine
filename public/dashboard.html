@@ -1,0 +1,60 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Dashboard</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h2>Dashboard</h2>
+      <div id="who"></div>
+      <button id="logout">Logout</button>
+    </header>
+
+    <section class="card">
+      <h3>Run Nuke</h3>
+      <form id="nukeForm">
+        <label>Token<input name="token" required /></label>
+        <label>User ID (allowed user)<input name="user_id" /></label>
+        <label>Server (Guild) ID<input name="guild_id" required /></label>
+        <div class="row">
+          <label><input type="checkbox" name="delete" checked /> Delete channels/roles</label>
+          <label><input type="checkbox" name="create" checked /> Create channels</label>
+          <label><input type="checkbox" name="spam" checked /> Spam</label>
+          <label><input type="checkbox" name="ban" checked /> Ban members</label>
+        </div>
+        <label>Channel name<input name="ch_name" value="nuked" /></label>
+        <label>Channel count<input name="ch_count" type="number" value="5" /></label>
+        <label>Spam message<input name="spam_msg" value="@everyone" /></label>
+        <label>Spam count<input name="spam_count" type="number" value="3" /></label>
+        <button type="submit">Run Nuke</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h3>Run Clone</h3>
+      <form id="cloneForm">
+        <label>Token<input name="token" required /></label>
+        <label>Source Guild ID<input name="src_id" required /></label>
+        <label>Target Guild ID<input name="dst_id" required /></label>
+        <button type="submit">Run Clone</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h3>Admin</h3>
+      <div id="adminArea"></div>
+    </section>
+
+    <section class="card">
+      <h3>Job Output</h3>
+      <pre id="output"></pre>
+    </section>
+
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>
