@@ -9,14 +9,17 @@ const EventEmitter = require('events');
 const { v4: uuidv4 } = require('uuid');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+const SESSION_SECRET = process.env.SESSION_SECRET || 'change-this-secret';
+const ADMIN_USER = process.env.ADMIN_USER || 'admin';
+const ADMIN_PASS = process.env.ADMIN_PASS || 'admin';
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(require('cors')());
 
 app.use(session({
-  secret: 'change-this-secret',
+  secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
 }));
@@ -27,14 +30,17 @@ function loadUsers(){
 }
 function saveUsers(u){ fs.writeFileSync(USERS_FILE, JSON.stringify(u, null, 2)); }
 
-// Ensure default admin exists
+// Ensure default admin exists (use ENV values)
 let users = loadUsers();
 if(!users.users) users = { users: [] };
-if(!users.users.find(x=>x.username==='admin')){
+if(!users.users.find(x=>x.username===ADMIN_USER)){
   const salt = bcrypt.genSaltSync(10);
-  const hash = bcrypt.hashSync('admin', salt);
-  users.users.push({ username: 'admin', password: hash, role: 'admin' });
+  const hash = bcrypt.hashSync(ADMIN_PASS, salt);
+  users.users.push({ username: ADMIN_USER, password: hash, role: 'admin' });
   saveUsers(users);
+  console.log(`Created default admin user: ${ADMIN_USER}`);
+} else {
+  console.log(`Admin user ${ADMIN_USER} already exists (not overwritten)`);
 }
 
 // Simple auth middleware
@@ -108,8 +114,12 @@ app.post('/api/run-nuke', requireAuth, (req, res) => {
   });
 
   // send config via stdin as JSON
-  runner.stdin.write(JSON.stringify({ token, guild_id, cfg }) );
-  runner.stdin.end();
+  try {
+    runner.stdin.write(JSON.stringify({ token, guild_id, cfg }) );
+    runner.stdin.end();
+  } catch (err) {
+    return res.status(500).json({ error: 'failed to start job' });
+  }
 
   res.json({ jobId });
 });
@@ -124,8 +134,12 @@ app.post('/api/run-clone', requireAuth, (req, res) => {
   runner.stdout.on('data', (d) => { const s=d.toString(); jobs[jobId].logs.push(s); emitter.emit('log', s); });
   runner.stderr.on('data', (d) => { const s=d.toString(); jobs[jobId].logs.push(s); emitter.emit('log', s); });
   runner.on('close', (code) => { emitter.emit('end', code); });
-  runner.stdin.write(JSON.stringify({ token, src_id, dst_id }));
-  runner.stdin.end();
+  try {
+    runner.stdin.write(JSON.stringify({ token, src_id, dst_id }));
+    runner.stdin.end();
+  } catch (err) {
+    return res.status(500).json({ error: 'failed to start job' });
+  }
   res.json({ jobId });
 });
 
@@ -155,4 +169,4 @@ app.get('/api/admin/users', requireAdmin, (req,res)=>{
   res.json({ users: db.users.map(u=>({ username: u.username, role: u.role })) });
 });
 
-app.listen(PORT, () => console.log(`Server started on http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`Server started on http://localhost:${PORT} (admin: ${ADMIN_USER})`));
