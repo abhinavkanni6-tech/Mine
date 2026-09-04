@@ -20,7 +20,8 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 USERS_FILE = os.path.join(APP_DIR, 'users.json')
 PUBLIC_DIR = os.path.join(APP_DIR, 'public')
 
-app = Flask(__name__, static_folder='public', static_url_path='')
+# Create Flask app with explicit root_path/instance_path to avoid pkgutil issues in some hosts
+app = Flask(__name__, static_folder='public', static_url_path='', root_path=APP_DIR, instance_path=APP_DIR)
 app.secret_key = SESSION_SECRET
 
 jobs = {}  # jobId -> { 'proc': Popen, 'queue': Queue }
