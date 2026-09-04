@@ -13,6 +13,7 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const SESSION_SECRET = process.env.SESSION_SECRET || 'change-this-secret';
 const ADMIN_USER = process.env.ADMIN_USER || 'admin';
 const ADMIN_PASS = process.env.ADMIN_PASS || 'admin';
+const PYTHON_CMD = process.env.PYTHON_CMD || (process.platform === 'win32' ? 'python' : 'python3');
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -90,57 +91,59 @@ app.get('/api/whoami', (req, res) => {
 // Job management
 const jobs = {}; // jobId -> { proc, emitter, logs }
 
-app.post('/api/run-nuke', requireAuth, (req, res) => {
+function startPythonJob(scriptPath, payload) {
+  return new Promise((resolve, reject) => {
+    try {
+      const runner = spawn(PYTHON_CMD, [scriptPath], { stdio: ['pipe','pipe','pipe'] });
+      const emitter = new EventEmitter();
+      const jobId = uuidv4();
+      jobs[jobId] = { proc: runner, emitter, logs: [] };
+
+      runner.stdout.on('data', (d) => {
+        const s = d.toString();
+        jobs[jobId].logs.push(s);
+        emitter.emit('log', s);
+      });
+      runner.stderr.on('data', (d) => {
+        const s = d.toString();
+        jobs[jobId].logs.push(s);
+        emitter.emit('log', s);
+      });
+      runner.on('close', (code) => {
+        emitter.emit('end', code);
+      });
+
+      // send payload via stdin as JSON
+      runner.stdin.write(JSON.stringify(payload));
+      runner.stdin.end();
+
+      resolve(jobId);
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+app.post('/api/run-nuke', requireAuth, async (req, res) => {
   const { token, guild_id, cfg } = req.body;
   if(!token || !guild_id) return res.status(400).json({ error: 'missing token or guild_id' });
-  const jobId = uuidv4();
-  const runner = spawn('python3', [path.join(__dirname, 'run_nuke_web.py')], { stdio: ['pipe','pipe','pipe'] });
-
-  const emitter = new EventEmitter();
-  jobs[jobId] = { proc: runner, emitter, logs: [] };
-
-  runner.stdout.on('data', (d) => {
-    const s = d.toString();
-    jobs[jobId].logs.push(s);
-    emitter.emit('log', s);
-  });
-  runner.stderr.on('data', (d) => {
-    const s = d.toString();
-    jobs[jobId].logs.push(s);
-    emitter.emit('log', s);
-  });
-  runner.on('close', (code) => {
-    emitter.emit('end', code);
-  });
-
-  // send config via stdin as JSON
   try {
-    runner.stdin.write(JSON.stringify({ token, guild_id, cfg }) );
-    runner.stdin.end();
+    const jobId = await startPythonJob(path.join(__dirname, 'run_nuke_web.py'), { token, guild_id, cfg });
+    res.json({ jobId });
   } catch (err) {
-    return res.status(500).json({ error: 'failed to start job' });
+    res.status(500).json({ error: 'failed_to_start', detail: String(err) });
   }
-
-  res.json({ jobId });
 });
 
-app.post('/api/run-clone', requireAuth, (req, res) => {
+app.post('/api/run-clone', requireAuth, async (req, res) => {
   const { token, src_id, dst_id } = req.body;
   if(!token || !src_id || !dst_id) return res.status(400).json({ error: 'missing' });
-  const jobId = uuidv4();
-  const runner = spawn('python3', [path.join(__dirname, 'run_clone_web.py')], { stdio: ['pipe','pipe','pipe'] });
-  const emitter = new EventEmitter();
-  jobs[jobId] = { proc: runner, emitter, logs: [] };
-  runner.stdout.on('data', (d) => { const s=d.toString(); jobs[jobId].logs.push(s); emitter.emit('log', s); });
-  runner.stderr.on('data', (d) => { const s=d.toString(); jobs[jobId].logs.push(s); emitter.emit('log', s); });
-  runner.on('close', (code) => { emitter.emit('end', code); });
   try {
-    runner.stdin.write(JSON.stringify({ token, src_id, dst_id }));
-    runner.stdin.end();
+    const jobId = await startPythonJob(path.join(__dirname, 'run_clone_web.py'), { token, src_id, dst_id });
+    res.json({ jobId });
   } catch (err) {
-    return res.status(500).json({ error: 'failed to start job' });
+    res.status(500).json({ error: 'failed_to_start', detail: String(err) });
   }
-  res.json({ jobId });
 });
 
 // SSE stream for logs
@@ -169,4 +172,4 @@ app.get('/api/admin/users', requireAdmin, (req,res)=>{
   res.json({ users: db.users.map(u=>({ username: u.username, role: u.role })) });
 });
 
-app.listen(PORT, () => console.log(`Server started on http://localhost:${PORT} (admin: ${ADMIN_USER})`));
+app.listen(PORT, () => console.log(`Server started on http://localhost:${PORT} (admin: ${ADMIN_USER}, python: ${PYTHON_CMD})`));
