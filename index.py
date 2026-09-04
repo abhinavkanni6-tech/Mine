@@ -1,13 +1,40 @@
+# Monkeypatch for hosts where a third-party pkgutil shadows stdlib
+import pkgutil, importlib.util
+if not hasattr(pkgutil, "get_loader"):
+    def _get_loader(name):
+        spec = importlib.util.find_spec(name)
+        return spec.loader if spec else None
+    pkgutil.get_loader = _get_loader
+
+# Load environment from .env if present
+from dotenv import load_dotenv
+load_dotenv()
+
 from flask import Flask, request, jsonify, session, redirect, send_from_directory, Response
 import os
 import json
-import bcrypt
 import uuid
 import subprocess
 import threading
 import queue
 import sys
 from functools import wraps
+
+# Try to use bcrypt if available, otherwise fall back to werkzeug security functions
+try:
+    import bcrypt
+    def hash_pw(password: str) -> str:
+        return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    def check_pw(password: str, hashed: str) -> bool:
+        return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+    print('Using bcrypt for password hashing')
+except Exception:
+    from werkzeug.security import generate_password_hash, check_password_hash
+    def hash_pw(password: str) -> str:
+        return generate_password_hash(password)
+    def check_pw(password: str, hashed: str) -> bool:
+        return check_password_hash(hashed, password)
+    print('bcrypt unavailable; falling back to werkzeug.security')
 
 # Configuration from env
 ADMIN_USER = os.getenv('ADMIN_USER', 'admin')
@@ -45,8 +72,7 @@ db = load_users()
 if 'users' not in db:
     db = {'users': []}
 if not any(u.get('username') == ADMIN_USER for u in db['users']):
-    pw = ADMIN_PASS.encode('utf-8')
-    hashed = bcrypt.hashpw(pw, bcrypt.gensalt()).decode('utf-8')
+    hashed = hash_pw(ADMIN_PASS)
     db['users'].append({'username': ADMIN_USER, 'password': hashed, 'role': 'admin'})
     save_users(db)
     print(f"Created default admin user: {ADMIN_USER}")
@@ -94,8 +120,8 @@ def api_login():
     user = next((u for u in db.get('users', []) if u.get('username') == username), None)
     if not user:
         return jsonify({'error': 'invalid'}), 400
-    stored = user.get('password').encode('utf-8')
-    if not bcrypt.checkpw(password.encode('utf-8'), stored):
+    stored = user.get('password')
+    if not check_pw(password, stored):
         return jsonify({'error': 'invalid'}), 400
     session['user'] = {'username': user['username'], 'role': user.get('role', 'user')}
     return jsonify({'ok': True, 'user': session['user']})
@@ -120,7 +146,7 @@ def api_create_user():
     db = load_users()
     if any(u.get('username') == username for u in db.get('users', [])):
         return jsonify({'error': 'exists'}), 400
-    hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    hashed = hash_pw(password)
     db['users'].append({'username': username, 'password': hashed, 'role': role})
     save_users(db)
     return jsonify({'ok': True})
@@ -139,6 +165,13 @@ def start_python_job(script, payload):
     python_cmd = os.getenv('PYTHON_CMD', PYTHON_CMD)
     # Start subprocess
     proc = subprocess.Popen([python_cmd, script], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+
+    # write payload to stdin as JSON, then close stdin
+    try:
+        proc.stdin.write(json.dumps(payload))
+        proc.stdin.close()
+    except Exception as e:
+        q.put(f"ERROR writing payload to process stdin: {e}")
 
     # reader thread
     def _reader():
