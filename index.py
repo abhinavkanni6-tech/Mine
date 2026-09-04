@@ -163,8 +163,15 @@ def start_python_job(script, payload):
     job_id = uuid.uuid4().hex
     q = queue.Queue()
     python_cmd = os.getenv('PYTHON_CMD', PYTHON_CMD)
-    # Start subprocess
-    proc = subprocess.Popen([python_cmd, script], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+
+    # Ensure subprocess runs in the script's directory so relative imports work
+    cwd = os.path.dirname(script) if os.path.isabs(script) else APP_DIR
+    env = os.environ.copy()
+    # Provide MAIN_PY_PATH to child processes as a fallback
+    env.setdefault('MAIN_PY_PATH', os.path.join(APP_DIR, 'main_Version5.py'))
+
+    # Start subprocess with cwd and environment
+    proc = subprocess.Popen([python_cmd, script], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, cwd=cwd, env=env)
 
     # write payload to stdin as JSON, then close stdin
     try:
@@ -254,6 +261,47 @@ def api_list_users():
     db = load_users()
     users = [{'username': u['username'], 'role': u.get('role','user')} for u in db.get('users', [])]
     return jsonify({'users': users})
+
+
+# --- Admin update / delete endpoints (for front-end user management)
+@app.route('/api/admin/user/<username>', methods=['PUT'])
+@admin_required
+def api_update_user(username):
+    data = request.get_json() or {}
+    db = load_users()
+    user = next((u for u in db.get('users', []) if u.get('username') == username), None)
+    if not user:
+        return jsonify({'error': 'not_found'}), 404
+
+    if username == ADMIN_USER and data.get('role') != 'admin':
+        return jsonify({'error': 'cannot_change_initial_admin_role'}), 400
+
+    if 'role' in data:
+        user['role'] = data['role']
+
+    if data.get('password'):
+        user['password'] = hash_pw(data['password'])
+
+    save_users(db)
+    return jsonify({'ok': True})
+
+
+@app.route('/api/admin/user/<username>', methods=['DELETE'])
+@admin_required
+def api_delete_user(username):
+    if username == ADMIN_USER:
+        return jsonify({'error': 'cannot_delete_initial_admin'}), 400
+
+    db = load_users()
+    before = len(db.get('users', []))
+    db['users'] = [u for u in db.get('users', []) if u.get('username') != username]
+    after = len(db.get('users', []))
+
+    if before == after:
+        return jsonify({'error': 'not_found'}), 404
+
+    save_users(db)
+    return jsonify({'ok': True})
 
 
 if __name__ == '__main__':
