@@ -1,0 +1,18 @@
+[Unit]
+Description=Abhinav Discord Tool (Flask)
+After=network.target
+
+[Service]
+Type=simple
+User=YOUR_SYSTEM_USER_HERE
+WorkingDirectory=/ABS/PATH/TO/REPO
+Environment=ADMIN_USER=admin
+Environment=ADMIN_PASS=admin
+Environment=SESSION_SECRET=a-long-random-secret
+Environment=PORT=25318
+Environment=PYTHON_CMD=/ABS/PATH/TO/REPO/venv/bin/python
+ExecStart=/ABS/PATH/TO/REPO/venv/bin/gunicorn -w 4 -b 0.0.0.0:25318 index:app
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
